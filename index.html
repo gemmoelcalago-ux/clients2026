@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>St. Peter — Payment Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --dark: #1a1610;
+    --dark2: #252015;
+    --dark3: #2f2818;
+    --card: #211d12;
+    --border: #3a3220;
+    --text: #f0e9d6;
+    --muted: #9a8f72;
+    --green: #4caf82;
+    --red: #e05c5c;
+    --blue: #5c9ee0;
+    --amber: #e0a84c;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--dark); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
+
+  /* ─── LOADING OVERLAY ─── */
+  #loadingOverlay {
+    position: fixed; inset: 0; background: var(--dark); z-index: 9999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    transition: opacity 0.4s;
+  }
+  #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+  .loader-cross { font-size: 36px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.4; transform:scale(0.9); } }
+  .loader-text { font-size: 13px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+
+  /* ─── NAV ─── */
+  header {
+    background: linear-gradient(135deg, #1a1610 0%, #2a2212 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { width: 38px; height: 38px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .logo-text { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--gold); }
+  .logo-sub { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+  .view-badge { background: var(--dark3); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: var(--muted); }
+  #viewBadgeText { color: var(--gold-light); font-weight: 600; }
+
+  /* ─── LAYOUT ─── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+  .main { padding: 32px 0; }
+
+  /* ─── VIEWS ─── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ─── PORTAL ─── */
+  .portal-wrap {
+    min-height: calc(100vh - 70px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px 20px;
+  }
+  .portal-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 48px;
+    width: 100%; max-width: 480px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    text-align: center;
+  }
+  .portal-card .cross { font-size: 40px; margin-bottom: 16px; }
+  .portal-card h2 { font-family: 'Playfair Display', serif; color: var(--gold); font-size: 26px; margin-bottom: 8px; }
+  .portal-card p { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  .form-group { text-align: left; margin-bottom: 18px; }
+  .form-group label { display: block; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .form-group input, .form-group select {
+    width: 100%; background: var(--dark3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 12px 16px; font-size: 15px;
+    font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--gold); }
+  .form-group select option { background: var(--dark3); }
+  .btn-gold {
+    width: 100%; background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    color: var(--dark); border: none; border-radius: 8px; padding: 14px;
+    font-size: 15px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; margin-top: 8px; transition: opacity 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .btn-gold:hover { opacity: 0.92; transform: translateY(-1px); }
+  .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .admin-link { font-size: 13px; color: var(--muted); cursor: pointer; }
+  .admin-link span { color: var(--gold); text-decoration: underline; }
+  .error-msg { background: rgba(224,92,92,0.15); border: 1px solid var(--red); border-radius: 6px; padding: 10px 14px; font-size: 13px; color: var(--red); margin-bottom: 16px; display: none; }
+
+  /* ─── CLIENT VIEW ─── */
+  .client-header {
+    background: linear-gradient(135deg, var(--card), var(--dark3));
+    border: 1px solid var(--border); border-radius: 16px;
+    padding: 28px 32px; margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .client-name { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--gold); }
+  .client-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
+  .meta-chip { background: var(--dark); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; font-size: 12px; }
+  .meta-chip span { color: var(--gold-light); font-weight: 600; }
+  .btn-logout { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 8px 18px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; transition: all 0.2s; }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+  /* ─── ADMIN ─── */
+  .admin-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
+  .admin-topbar h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: var(--gold); }
+  .admin-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .search-box { background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 9px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; width: 220px; transition: border-color 0.2s; }
+  .search-box:focus { border-color: var(--gold); }
+  .filter-select { background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 9px 14px; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; cursor: pointer; }
+  .filter-select option { background: var(--dark3); }
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
+  .stat-val { font-family: 'Playfair Display', serif; font-size: 28px; }
+  .stat-val.gold { color: var(--gold); }
+  .stat-val.green { color: var(--green); }
+  .stat-val.red { color: var(--red); }
+  .stat-val.blue { color: var(--blue); }
+
+  /* ─── TABLE ─── */
+  .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  thead { background: linear-gradient(135deg, #2a2410, #1f1b0d); }
+  th { padding: 14px 16px; text-align: left; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gold); font-weight: 600; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; border-bottom: 1px solid rgba(58,50,32,0.5); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(201,168,76,0.04); }
+  .name-cell { font-weight: 600; }
+  .policy-cell { font-family: monospace; font-size: 12px; color: var(--muted); }
+  .plan-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+  .plan-monthly   { background: rgba(92,158,224,0.15);  color: var(--blue);  border: 1px solid rgba(92,158,224,0.3); }
+  .plan-annual    { background: rgba(201,168,76,0.15);  color: var(--gold);  border: 1px solid rgba(201,168,76,0.3); }
+  .plan-quarterly { background: rgba(76,175,130,0.15);  color: var(--green); border: 1px solid rgba(76,175,130,0.3); }
+
+  /* ─── MONTH CELLS ─── */
+  .month-cell { position: relative; min-width: 90px; }
+  .payment-date  { background: rgba(76,175,130,0.12); border: 1px solid rgba(76,175,130,0.3); border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--green); cursor: pointer; display: inline-block; white-space: nowrap; }
+  .payment-empty { background: rgba(58,50,32,0.4); border: 1px dashed var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--muted); cursor: pointer; display: inline-block; }
+  .payment-empty:hover { border-color: var(--gold); color: var(--gold-light); }
+  .n-a { color: var(--muted); font-size: 12px; }
+
+  /* ─── NOTES ─── */
+  .notes-cell { max-width: 180px; }
+  .notes-text { font-size: 12px; color: var(--muted); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; display: inline-block; }
+  .notes-text:hover { color: var(--gold-light); }
+  .notes-add { font-size: 11px; color: var(--border); cursor: pointer; }
+  .notes-add:hover { color: var(--gold); }
+
+  /* ─── PAYMENT METHOD ─── */
+  .pm-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .pm-badge:hover { opacity: 0.75; }
+  .pm-cash   { background: rgba(76,175,130,0.15);  color: var(--green); border: 1px solid rgba(76,175,130,0.3); }
+  .pm-gcash  { background: rgba(0,150,255,0.15);   color: #3db3ff;      border: 1px solid rgba(0,150,255,0.3); }
+  .pm-bank   { background: rgba(224,168,76,0.15);  color: var(--amber); border: 1px solid rgba(224,168,76,0.3); }
+  .pm-online { background: rgba(180,100,255,0.15); color: #c07aff;      border: 1px solid rgba(180,100,255,0.3); }
+  .pm-check  { background: rgba(200,200,200,0.1);  color: #c8c0a8;      border: 1px solid rgba(200,200,200,0.2); }
+  .pm-none   { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+
+  /* ─── SECTION DIVIDER ─── */
+  .section-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; }
+  .section-divider span { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); white-space: nowrap; }
+  .section-divider hr { flex: 1; border: none; border-top: 1px solid var(--border); }
+
+  /* ─── MODAL ─── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 440px; box-shadow: 0 30px 80px rgba(0,0,0,0.7); }
+  .modal h3 { font-family: 'Playfair Display', serif; color: var(--gold); font-size: 20px; margin-bottom: 6px; }
+  .modal .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+  .modal .form-group { margin-bottom: 16px; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+  .btn-primary { flex: 1; background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: var(--dark); border: none; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: opacity 0.2s; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { flex: 1; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+  .btn-secondary:hover { border-color: var(--muted); color: var(--text); }
+  .btn-danger { background: rgba(224,92,92,0.1); color: var(--red); border: 1px solid rgba(224,92,92,0.3); border-radius: 8px; padding: 12px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+  .btn-danger:hover { background: rgba(224,92,92,0.2); }
+  textarea.modal-textarea { width: 100%; background: var(--dark3); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 12px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; resize: vertical; min-height: 90px; outline: none; }
+  textarea.modal-textarea:focus { border-color: var(--gold); }
+  .modal-date-input { width:100%; background:var(--dark3); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:12px 16px; font-size:15px; font-family:'DM Sans',sans-serif; outline:none; }
+  .modal-date-input:focus { border-color: var(--gold); }
+  .modal-select { width:100%; background:var(--dark3); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:12px 16px; font-size:15px; font-family:'DM Sans',sans-serif; outline:none; }
+
+  /* ─── SHARE MODAL ─── */
+  .share-link-box { background: var(--dark3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 12px; font-family: monospace; color: var(--gold-light); word-break: break-all; margin-bottom: 12px; }
+  .btn-copy { background: var(--dark3); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 10px 20px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+  .btn-copy:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-share-row { display: flex; gap: 10px; align-items: center; }
+
+  /* ─── CLIENT PAYMENT TABLE ─── */
+  .client-payments { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .progress-bar-wrap { background: var(--dark3); border-radius: 20px; height: 6px; margin-top: 16px; overflow: hidden; }
+  .progress-bar { background: linear-gradient(90deg, var(--gold), var(--green)); height: 100%; border-radius: 20px; transition: width 0.5s ease; }
+  .progress-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ─── ONLINE BANNER ─── */
+  .online-banner {
+    background: linear-gradient(135deg, #1a1230 0%, #1e1a10 100%);
+    border: 1px solid rgba(180,100,255,0.35);
+    border-radius: 14px; padding: 24px 28px; margin-top: 24px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .online-banner.locked { border-color: var(--border); opacity: 0.6; filter: grayscale(0.4); }
+  .banner-left h3 { font-family: 'Playfair Display', serif; font-size: 18px; color: #c07aff; margin-bottom: 6px; }
+  .banner-left p  { font-size: 13px; color: var(--muted); max-width: 420px; line-height: 1.6; }
+  .banner-left .lock-note { font-size: 12px; color: var(--amber); margin-top: 8px; }
+  .referral-chip { background: rgba(180,100,255,0.12); border: 1px solid rgba(180,100,255,0.3); border-radius: 10px; padding: 10px 18px; text-align: center; }
+  .referral-chip .ref-label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
+  .referral-chip .ref-code  { font-family: monospace; font-size: 22px; color: #c07aff; font-weight: 700; letter-spacing: 3px; margin: 4px 0; }
+  .referral-chip .ref-copy  { font-size: 11px; color: var(--muted); cursor: pointer; }
+  .referral-chip .ref-copy:hover { color: #c07aff; }
+  .btn-visit { background: linear-gradient(135deg, #7c3aed, #c07aff); color: #fff; border: none; border-radius: 8px; padding: 12px 22px; font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none; display: inline-block; transition: opacity 0.2s, transform 0.1s; }
+  .btn-visit:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-visit.disabled { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+
+  /* ─── TOAST ─── */
+  .toast { position: fixed; bottom: 28px; right: 28px; background: var(--dark3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 13px; color: var(--text); box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 999; transform: translateY(80px); opacity: 0; transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error   { border-color: var(--red); }
+
+  /* ─── SPINNER ─── */
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(26,22,16,0.3); border-top-color: var(--dark); border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 700px) {
+    header { padding: 14px 16px; }
+    .portal-card { padding: 32px 24px; }
+    .admin-topbar h1 { font-size: 22px; }
+    th, td { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingOverlay">
+  <div class="loader-cross">✟</div>
+  <div class="loader-text">Loading portal…</div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">✟</div>
+    <div>
+      <div class="logo-text">St. Peter Life Plan</div>
+      <div class="logo-sub">Payment Tracker</div>
+    </div>
+  </div>
+  <div class="view-badge">Viewing as: <span id="viewBadgeText">—</span></div>
+</header>
+
+<!-- ═══════════ HOME ═══════════ -->
+<div id="viewHome" class="view active">
+  <div class="portal-wrap">
+    <div class="portal-card">
+      <div class="cross">✟</div>
+      <h2>Welcome</h2>
+      <p>Please select how you'd like to access the portal.</p>
+      <button class="btn-gold" onclick="showAdminLogin()">Admin — Full Dashboard</button>
+      <hr class="divider">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:18px;">Are you a client? Access your personal payment record:</p>
+      <div class="form-group">
+        <label>Select Your Name</label>
+        <select id="clientSelect"><option value="">— Loading… —</option></select>
+      </div>
+      <div class="form-group">
+        <label>Date of Birth (MM/DD/YYYY)</label>
+        <input type="text" id="clientPin" placeholder="e.g. 06/28/1994" maxlength="10">
+      </div>
+      <div id="clientError" class="error-msg"></div>
+      <button class="btn-gold" id="btnClientLogin" onclick="clientLogin()">View My Payments</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN LOGIN ═══════════ -->
+<div id="viewAdminLogin" class="view">
+  <div class="portal-wrap">
+    <div class="portal-card">
+      <div class="cross">✟</div>
+      <h2>Admin Login</h2>
+      <p>Enter your admin password to access the full dashboard.</p>
+      <div class="form-group">
+        <label>Admin Password</label>
+        <input type="password" id="adminPwd" placeholder="Enter password" onkeydown="if(event.key==='Enter')adminLogin()">
+      </div>
+      <div id="adminError" class="error-msg"></div>
+      <button class="btn-gold" id="btnAdminLogin" onclick="adminLogin()">Sign In</button>
+      <hr class="divider">
+      <p class="admin-link" onclick="showHome()">← <span>Back to home</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN DASHBOARD ═══════════ -->
+<div id="viewAdmin" class="view">
+  <div class="container">
+    <div class="main">
+      <div class="admin-topbar">
+        <h1>Payment Dashboard</h1>
+        <div class="admin-controls">
+          <input class="search-box" type="text" placeholder="🔍  Search client…" oninput="renderTable()" id="searchInput">
+          <select class="filter-select" id="filterPlan" onchange="renderTable()">
+            <option value="">All Plans</option>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="annual">Annual</option>
+          </select>
+          <button class="btn-logout" onclick="showHome()">Log Out</button>
+        </div>
+      </div>
+      <div class="stats-row" id="statsRow"></div>
+      <div class="table-wrap">
+        <table id="mainTable">
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CLIENT VIEW ═══════════ -->
+<div id="viewClient" class="view">
+  <div class="container">
+    <div class="main">
+      <div class="client-header">
+        <div>
+          <div class="client-name" id="clientName">—</div>
+          <div class="client-meta" id="clientMeta"></div>
+        </div>
+        <button class="btn-logout" onclick="showHome()">Log Out</button>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="clientProgressBar" style="width:0%"></div>
+      </div>
+      <div class="progress-label" id="clientProgressLabel"></div>
+      <br>
+      <div class="client-payments">
+        <table id="clientTable">
+          <thead id="clientTableHead"></thead>
+          <tbody id="clientTableBody"></tbody>
+        </table>
+      </div>
+      <div id="onlineBanner"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: PAYMENT ═══════════ -->
+<div id="modalPayment" class="modal-overlay">
+  <div class="modal">
+    <h3>Record Payment</h3>
+    <p class="modal-sub" id="modalPaySub"></p>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="modalDate" class="modal-date-input">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal('modalPayment')">Cancel</button>
+      <button class="btn-danger" id="btnClearPay" onclick="clearPayment()">Clear</button>
+      <button class="btn-primary" id="btnSavePay" onclick="savePayment()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: NOTES ═══════════ -->
+<div id="modalNotes" class="modal-overlay">
+  <div class="modal">
+    <h3>Notes</h3>
+    <p class="modal-sub" id="modalNotesSub"></p>
+    <textarea class="modal-textarea" id="modalNotesText" placeholder="Add notes about this client…"></textarea>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal('modalNotes')">Cancel</button>
+      <button class="btn-primary" id="btnSaveNotes" onclick="saveNotes()">Save Notes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: SHARE ═══════════ -->
+<div id="modalShare" class="modal-overlay">
+  <div class="modal">
+    <h3>Share Client Link</h3>
+    <p class="modal-sub">Send this link to your client. They'll only see their own record.</p>
+    <div class="share-link-box" id="shareLinkBox"></div>
+    <div class="btn-share-row">
+      <button class="btn-copy" onclick="copyShareLink()">📋 Copy Link</button>
+      <span style="font-size:12px;color:var(--muted);">Client logs in with Date of Birth</span>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeModal('modalShare')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: PAYMENT METHOD ═══════════ -->
+<div id="modalPM" class="modal-overlay">
+  <div class="modal">
+    <h3>Payment Method</h3>
+    <p class="modal-sub" id="modalPMSub"></p>
+    <div class="form-group">
+      <label>Select Method</label>
+      <select id="modalPMSelect" class="modal-select">
+        <option value="">— Not set —</option>
+        <option value="Cash">💵 Cash</option>
+        <option value="GCash">📱 GCash</option>
+        <option value="Bank Transfer">🏦 Bank Transfer</option>
+        <option value="Online (stpeter.com.ph)">🌐 Online (stpeter.com.ph)</option>
+        <option value="Check">📄 Check</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal('modalPM')">Cancel</button>
+      <button class="btn-primary" id="btnSavePM" onclick="savePM()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════════════════
+// IMPORTANT: Replace this with your deployed Apps Script Web App URL
+// after deploying. Go to: Deploy > Manage deployments > copy the URL
+const API_URL = '<?= ScriptApp.getService().getUrl() ?>';
+
+const MONTHS = [
+  { key:'may26',  label:'May 2026' },
+  { key:'jun26',  label:'Jun 2026' },
+  { key:'jul26',  label:'Jul 2026' },
+  { key:'aug26',  label:'Aug 2026' },
+  { key:'sep26',  label:'Sep 2026' },
+  { key:'oct26',  label:'Oct 2026' },
+  { key:'nov26',  label:'Nov 2026' },
+  { key:'dec26',  label:'Dec 2026' },
+  { key:'jan27',  label:'Jan 2027' },
+  { key:'feb27',  label:'Feb 2027' },
+  { key:'mar27',  label:'Mar 2027' },
+  { key:'apr27',  label:'Apr 2027' },
+  { key:'may27',  label:'May 2027' },
+  { key:'jun27',  label:'Jun 2027' },
+];
+
+const REFERRAL   = 'GEMM2232';
+const ONLINE_URL = 'https://online.stpeter.com.ph';
+
+// ════════════════════════════════════════════════════════
+//  API LAYER — all reads/writes go to Sheets
+// ════════════════════════════════════════════════════════
+
+async function api(action, payload = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Server error');
+  return json.data;
+}
+
+// ════════════════════════════════════════════════════════
+//  APP STATE (in-memory cache after admin loads)
+// ════════════════════════════════════════════════════════
+
+let CLIENTS    = [];
+let PAYMENTS   = {};   // { clientId: { monthKey: dateStr } }
+let NOTES      = {};   // { clientId: string }
+let METHODS    = {};   // { clientId: string }
+let adminPwdCache = '';
+let currentClientId = null;
+
+// ════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════
+
+async function init() {
+  try {
+    CLIENTS = await api('getClients');
+    populateClientSelect();
+    handleUrlParams();
+  } catch (e) {
+    showToast('⚠ Could not connect to database: ' + e.message, false);
+  } finally {
+    document.getElementById('loadingOverlay').classList.add('hidden');
+  }
+}
+
+function populateClientSelect() {
+  const sel = document.getElementById('clientSelect');
+  sel.innerHTML = '<option value="">— Choose your name —</option>';
+  CLIENTS.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name;
+    sel.appendChild(o);
+  });
+}
+
+// ════════════════════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════════════════════
+
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showHome() {
+  showView('viewHome');
+  document.getElementById('viewBadgeText').textContent = '—';
+  currentClientId = null;
+}
+function showAdminLogin() {
+  showView('viewAdminLogin');
+  document.getElementById('adminPwd').value = '';
+}
+
+// ════════════════════════════════════════════════════════
+//  ADMIN LOGIN
+// ════════════════════════════════════════════════════════
+
+async function adminLogin() {
+  const pwd = document.getElementById('adminPwd').value;
+  const btn = document.getElementById('btnAdminLogin');
+  const errEl = document.getElementById('adminError');
+  errEl.style.display = 'none';
+  setLoading(btn, true);
+  try {
+    await api('adminLogin', { password: pwd });
+    adminPwdCache = pwd;
+    document.getElementById('viewBadgeText').textContent = 'Admin';
+    showView('viewAdmin');
+    await loadAdminData();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function loadAdminData() {
+  try {
+    const all = await api('getAllData', { password: adminPwdCache });
+    CLIENTS  = all.clients;
+    PAYMENTS = all.payments;
+    NOTES    = all.notes;
+    METHODS  = all.methods;
+    renderStats();
+    renderTable();
+  } catch (e) {
+    showToast('Error loading data: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  CLIENT LOGIN
+// ════════════════════════════════════════════════════════
+
+async function clientLogin() {
+  const id  = document.getElementById('clientSelect').value;
+  const dob = document.getElementById('clientPin').value.trim();
+  const err = document.getElementById('clientError');
+  const btn = document.getElementById('btnClientLogin');
+  err.style.display = 'none';
+
+  if (!id) { err.textContent = 'Please select your name.'; err.style.display='block'; return; }
+
+  setLoading(btn, true);
+  try {
+    const client = await api('clientLogin', { clientId: id, dob });
+    document.getElementById('viewBadgeText').textContent = client.name.split(',')[0];
+    currentClientId = client.id;
+    await showClientView(client);
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  CLIENT VIEW
+// ════════════════════════════════════════════════════════
+
+async function showClientView(client) {
+  showView('viewClient');
+  document.getElementById('clientName').textContent = client.name;
+
+  // Fetch this client's data fresh from Sheets
+  const payments = await api('getPayments', { clientId: client.id });
+  const { notes } = await api('getNotes', { clientId: client.id });
+  const { method: pm } = await api('getPaymentMethod', { clientId: client.id });
+
+  const pmIcon = pmIconFor(pm);
+  document.getElementById('clientMeta').innerHTML = `
+    <div class="meta-chip">Policy: <span>${client.policy}</span></div>
+    <div class="meta-chip">Plan: <span>${client.plan}</span></div>
+    <div class="meta-chip">Type: <span>${client.planType}</span></div>
+    ${pm ? `<div class="meta-chip">Pay Method: <span>${pmIcon} ${pm}</span></div>` : ''}
+  `;
+
+  const relevantMonths = getRelevantMonths(client.plan);
+  let paid = 0;
+  const thead = document.getElementById('clientTableHead');
+  const tbody = document.getElementById('clientTableBody');
+  thead.innerHTML = `<tr><th>Month</th><th>Status</th><th>Payment Date</th></tr>`;
+  tbody.innerHTML = '';
+
+  relevantMonths.forEach(mk => {
+    const m = MONTHS.find(x => x.key === mk);
+    const date = payments[mk] || null;
+    if (date) paid++;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${m.label}</td>
+      <td>${date ? '<span style="color:var(--green);font-weight:600;">✓ Paid</span>' : '<span style="color:var(--muted);">Pending</span>'}</td>
+      <td>${date || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const pct = relevantMonths.length > 0 ? Math.round(paid / relevantMonths.length * 100) : 0;
+  document.getElementById('clientProgressBar').style.width = pct + '%';
+  document.getElementById('clientProgressLabel').textContent = `${paid} of ${relevantMonths.length} payments recorded (${pct}%)`;
+
+  // Online banner
+  const unlocked = paid >= 12;
+  const bannerEl = document.getElementById('onlineBanner');
+  bannerEl.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.className = 'online-banner' + (unlocked ? '' : ' locked');
+  banner.innerHTML = `
+    <div class="banner-left">
+      <h3>🌐 Pay Online via St. Peter Portal</h3>
+      <p>After completing 12 months of payments through your agent, you may continue paying directly through the official St. Peter online portal.</p>
+      ${unlocked
+        ? `<p style="color:var(--green);font-size:13px;margin-top:8px;">✓ You are eligible to pay online!</p>`
+        : `<div class="lock-note">🔒 Available after 12 completed payments — you have <strong>${paid}</strong> so far.</div>`}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+      <div class="referral-chip">
+        <div class="ref-label">Your Referral Code</div>
+        <div class="ref-code">${REFERRAL}</div>
+        <div class="ref-copy" onclick="copyReferral('${REFERRAL}')">📋 Tap to copy</div>
+      </div>
+      <a href="${ONLINE_URL}" target="_blank" class="btn-visit ${unlocked ? '' : 'disabled'}">
+        Visit online.stpeter.com.ph →
+      </a>
+    </div>
+  `;
+  bannerEl.appendChild(banner);
+}
+
+function getRelevantMonths(plan) {
+  const p = plan.toLowerCase();
+  if (p === 'annual')    return ['may26'];
+  if (p === 'quarterly') return ['may26','aug26','nov26','feb27','may27'];
+  return MONTHS.map(m => m.key);
+}
+
+// ════════════════════════════════════════════════════════
+//  ADMIN RENDER
+// ════════════════════════════════════════════════════════
+
+function renderStats() {
+  const total     = CLIENTS.length;
+  const monthly   = CLIENTS.filter(c => c.plan.toLowerCase() === 'monthly').length;
+  const annual    = CLIENTS.filter(c => c.plan.toLowerCase() === 'annual').length;
+  const quarterly = CLIENTS.filter(c => c.plan.toLowerCase() === 'quarterly').length;
+  const thisMonth = MONTHS[0].key;
+  const paidNow   = CLIENTS.filter(c => PAYMENTS[c.id] && PAYMENTS[c.id][thisMonth]).length;
+
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total Clients</div><div class="stat-val gold">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Monthly Plans</div><div class="stat-val blue">${monthly}</div></div>
+    <div class="stat-card"><div class="stat-label">Annual Plans</div><div class="stat-val gold">${annual}</div></div>
+    <div class="stat-card"><div class="stat-label">Quarterly Plans</div><div class="stat-val green">${quarterly}</div></div>
+    <div class="stat-card"><div class="stat-label">Paid — ${MONTHS[0].label}</div><div class="stat-val green">${paidNow}</div></div>
+  `;
+}
+
+function renderTable() {
+  const search     = document.getElementById('searchInput').value.toLowerCase();
+  const filterPlan = document.getElementById('filterPlan').value.toLowerCase();
+
+  const filtered = CLIENTS.filter(c => {
+    const matchS = c.name.toLowerCase().includes(search) || c.policy.toLowerCase().includes(search);
+    const matchP = !filterPlan || c.plan.toLowerCase() === filterPlan;
+    return matchS && matchP;
+  });
+
+  const thead = document.getElementById('tableHead');
+  let thHtml = `<tr><th>#</th><th>Client Name</th><th>Policy No.</th><th>Plan</th><th>Plan Type</th><th>Pay Method</th>`;
+  MONTHS.forEach(m => { thHtml += `<th>${m.label}</th>`; });
+  thHtml += `<th>Notes</th><th>Share</th></tr>`;
+  thead.innerHTML = thHtml;
+
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  let lastBatch = null;
+
+  filtered.forEach((c, i) => {
+    if (c.batch !== lastBatch) {
+      lastBatch = c.batch;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="${6 + MONTHS.length + 2}" style="padding:6px 16px 2px;">
+        <div class="section-divider"><hr><span>Batch ${c.batch}</span><hr></div>
+      </td>`;
+      tbody.appendChild(tr);
+    }
+
+    const planLow   = c.plan.toLowerCase();
+    const planClass = planLow === 'monthly' ? 'plan-monthly' : planLow === 'annual' ? 'plan-annual' : 'plan-quarterly';
+    const relevant  = new Set(getRelevantMonths(c.plan));
+    const cPay      = PAYMENTS[c.id] || {};
+
+    let monthCells = '';
+    MONTHS.forEach(m => {
+      if (!relevant.has(m.key)) {
+        monthCells += `<td class="month-cell"><span class="n-a">—</span></td>`;
+      } else {
+        const date = cPay[m.key];
+        monthCells += date
+          ? `<td class="month-cell"><span class="payment-date" onclick="openPaymentModal(${c.id},'${m.key}','${m.label}')">${date}</span></td>`
+          : `<td class="month-cell"><span class="payment-empty" onclick="openPaymentModal(${c.id},'${m.key}','${m.label}')">+ Add</span></td>`;
+      }
+    });
+
+    const notes    = NOTES[c.id] || '';
+    const notesCell = notes
+      ? `<span class="notes-text" title="${notes.replace(/"/g,'&quot;')}" onclick="openNotesModal(${c.id},'${c.name.replace(/'/g,"\\'")}')">${notes}</span>`
+      : `<span class="notes-add" onclick="openNotesModal(${c.id},'${c.name.replace(/'/g,"\\'")}')">+ Add note</span>`;
+
+    const pm      = METHODS[c.id] || '';
+    const pmClass = pmClassFor(pm);
+    const pmIcon  = pmIconFor(pm);
+    const pmCell  = `<span class="pm-badge ${pmClass}" onclick="openPMModal(${c.id},'${c.name.replace(/'/g,"\\'")}')">
+                       ${pmIcon} ${pm || 'Set method'}
+                     </span>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--muted);font-size:12px;">${i+1}</td>
+      <td class="name-cell">${c.name}</td>
+      <td class="policy-cell">${c.policy}</td>
+      <td><span class="plan-badge ${planClass}">${c.plan}</span></td>
+      <td style="font-size:12px;color:var(--muted);">${c.planType}</td>
+      <td>${pmCell}</td>
+      ${monthCells}
+      <td class="notes-cell">${notesCell}</td>
+      <td><button class="btn-copy" style="padding:6px 12px;font-size:11px;" onclick="openShareModal(${c.id})">🔗 Share</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderStats();
+}
+
+// ════════════════════════════════════════════════════════
+//  MODALS — PAYMENT
+// ════════════════════════════════════════════════════════
+
+let _editClientId, _editMonthKey;
+
+function openPaymentModal(clientId, monthKey, monthLabel) {
+  _editClientId = clientId;
+  _editMonthKey = monthKey;
+  const client = CLIENTS.find(c => c.id === clientId);
+  document.getElementById('modalPaySub').textContent = `${client.name} — ${monthLabel}`;
+  const existing = (PAYMENTS[clientId] || {})[monthKey] || '';
+  document.getElementById('modalDate').value = existing;
+  document.getElementById('modalPayment').classList.add('open');
+}
+
+async function savePayment() {
+  const date = document.getElementById('modalDate').value;
+  if (!date) { showToast('Please select a date.'); return; }
+  const btn = document.getElementById('btnSavePay');
+  setLoading(btn, true);
+  try {
+    await api('setPayment', { clientId: _editClientId, monthKey: _editMonthKey, paymentDate: date });
+    if (!PAYMENTS[_editClientId]) PAYMENTS[_editClientId] = {};
+    PAYMENTS[_editClientId][_editMonthKey] = date;
+    closeModal('modalPayment');
+    renderTable();
+    showToast('Payment recorded ✓', true);
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function clearPayment() {
+  const btn = document.getElementById('btnClearPay');
+  setLoading(btn, true);
+  try {
+    await api('clearPayment', { clientId: _editClientId, monthKey: _editMonthKey });
+    if (PAYMENTS[_editClientId]) delete PAYMENTS[_editClientId][_editMonthKey];
+    closeModal('modalPayment');
+    renderTable();
+    showToast('Payment cleared.');
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ── NOTES ──
+let _notesClientId;
+function openNotesModal(clientId, name) {
+  _notesClientId = clientId;
+  document.getElementById('modalNotesSub').textContent = name;
+  document.getElementById('modalNotesText').value = NOTES[clientId] || '';
+  document.getElementById('modalNotes').classList.add('open');
+}
+async function saveNotes() {
+  const text = document.getElementById('modalNotesText').value.trim();
+  const btn  = document.getElementById('btnSaveNotes');
+  setLoading(btn, true);
+  try {
+    await api('setNotes', { clientId: _notesClientId, notes: text });
+    NOTES[_notesClientId] = text;
+    closeModal('modalNotes');
+    renderTable();
+    showToast('Notes saved ✓', true);
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ── PAYMENT METHOD ──
+let _pmClientId;
+function openPMModal(clientId, name) {
+  _pmClientId = clientId;
+  document.getElementById('modalPMSub').textContent = name;
+  document.getElementById('modalPMSelect').value = METHODS[clientId] || '';
+  document.getElementById('modalPM').classList.add('open');
+}
+async function savePM() {
+  const val = document.getElementById('modalPMSelect').value;
+  const btn = document.getElementById('btnSavePM');
+  setLoading(btn, true);
+  try {
+    await api('setPaymentMethod', { clientId: _pmClientId, method: val });
+    METHODS[_pmClientId] = val;
+    closeModal('modalPM');
+    renderTable();
+    showToast('Payment method updated ✓', true);
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ── SHARE ──
+function openShareModal(clientId) {
+  const base = window.location.href.split('?')[0].split('#')[0];
+  document.getElementById('shareLinkBox').textContent = `${base}?client=${clientId}`;
+  document.getElementById('modalShare').classList.add('open');
+}
+function copyShareLink() {
+  navigator.clipboard.writeText(document.getElementById('shareLinkBox').textContent)
+    .then(() => { closeModal('modalShare'); showToast('Link copied ✓', true); });
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── REFERRAL ──
+function copyReferral(code) {
+  navigator.clipboard.writeText(code).then(() => showToast('Referral code copied: ' + code, true));
+}
+
+// ════════════════════════════════════════════════════════
+//  URL PARAMS — deep-link to client
+// ════════════════════════════════════════════════════════
+
+function handleUrlParams() {
+  const params   = new URLSearchParams(window.location.search);
+  const clientId = parseInt(params.get('client'));
+  if (clientId && CLIENTS.length) {
+    const client = CLIENTS.find(c => c.id === clientId);
+    if (client) {
+      document.getElementById('clientSelect').value = clientId;
+      document.getElementById('clientPin').focus();
+      showToast('Welcome! Enter your Date of Birth to continue.');
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════
+
+function pmClassFor(pm) {
+  if (!pm) return 'pm-none';
+  if (pm === 'Cash') return 'pm-cash';
+  if (pm === 'GCash') return 'pm-gcash';
+  if (pm === 'Bank Transfer') return 'pm-bank';
+  if (pm.startsWith('Online')) return 'pm-online';
+  if (pm === 'Check') return 'pm-check';
+  return 'pm-none';
+}
+function pmIconFor(pm) {
+  if (!pm) return '＋';
+  if (pm === 'Cash') return '💵';
+  if (pm === 'GCash') return '📱';
+  if (pm === 'Bank Transfer') return '🏦';
+  if (pm.startsWith('Online')) return '🌐';
+  if (pm === 'Check') return '📄';
+  return '';
+}
+
+function setLoading(btn, loading) {
+  if (loading) {
+    btn.disabled = true;
+    btn._orig = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner"></span>Saving…`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn._orig;
+  }
+}
+
+function showToast(msg, success = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (success ? ' success' : '');
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
